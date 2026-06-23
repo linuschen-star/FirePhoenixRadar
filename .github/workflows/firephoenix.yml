@@ -12,6 +12,9 @@ jobs:
   forecast:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,6 +31,18 @@ jobs:
       - name: Run Fire Phoenix
         run: |
           python fire_phoenix_forecast.py | tee report.txt
+
+      - name: Update README
+        run: |
+          python update_readme.py
+
+      - name: Commit README
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add README.md
+          git commit -m "Update fire forecast" || echo "No changes"
+          git push
 
       - name: Upload report
         uses: actions/upload-artifact@v4
