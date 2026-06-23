@@ -27,7 +27,7 @@ jobs:
 
       - name: Run Fire Phoenix
         run: |
-          python fire_phoenix_forecast.py > report.txt
+          python fire_phoenix_forecast.py | tee report.txt
 
       - name: Upload report
         uses: actions/upload-artifact@v4
