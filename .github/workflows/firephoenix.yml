@@ -1,6 +1,6 @@
 name: Fire Phoenix Radar
 
-on:
+'on':
   workflow_dispatch:
 
   schedule:
