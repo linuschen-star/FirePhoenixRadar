@@ -1,7 +1,6 @@
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import math
 
 LAT = 23.783761
 LON = 121.437198
@@ -30,11 +29,8 @@ def confidence(now, target):
 def estimate_moon_phase(date):
     known_new_moon = datetime(2000, 1, 6, 18, 14)
     lunar_cycle = 29.53058867
-
     days = (date - known_new_moon).total_seconds() / 86400
-    phase = (days % lunar_cycle) / lunar_cycle
-
-    return phase
+    return (days % lunar_cycle) / lunar_cycle
 
 
 def moon_label(phase):
@@ -52,21 +48,13 @@ def moon_label(phase):
 
 
 def fire_label(score, rain, low, visibility):
-    bad_weather = rain >= 70 or low >= 70 or visibility < 8
-    very_bad_weather = rain >= 75 and low >= 70
-
-    if score >= 90:
-        if bad_weather:
-            return "🔥🔥🔥 神級潛勢，但雨雲變數極高"
-        return "🔥🔥🔥 神級火鳳"
-
     if score >= 75:
-        if bad_weather:
+        if rain >= 70 or low >= 70 or visibility < 8:
             return "🔥🔥 大火鳳潛勢，但現場變數高"
         return "🔥🔥 大火鳳警報"
 
     if score >= 60:
-        if very_bad_weather:
+        if rain >= 65 or low >= 65 or visibility < 8:
             return "🌦 有破口機會，但雨雲風險高"
         return "🔥 有機會"
 
@@ -219,7 +207,41 @@ def score_star_sky(high, mid, low, visibility, rain, moon_phase):
     elif total_cloud >= 130:
         score = min(score, 45)
 
+    if visibility < 3:
+        score = min(score, 20)
+
+    if visibility < 1:
+        score = min(score, 16)
+
     return clamp(score)
+
+
+def star_failure_reason(best):
+    reasons = []
+
+    if best["visibility"] < 3:
+        reasons.append("能見度過低")
+    elif best["visibility"] < 8:
+        reasons.append("能見度偏差")
+
+    if best["high"] >= 60:
+        reasons.append("高空雲過多")
+    elif best["high"] >= 40:
+        reasons.append("高空雲偏多")
+
+    if best["mid"] >= 40:
+        reasons.append("中層雲偏多")
+
+    if best["low"] >= 45:
+        reasons.append("低層雲偏多")
+
+    if best["rain"] >= 30:
+        reasons.append("降雨機率偏高")
+
+    if not reasons:
+        return "主要限制：月光或雲層變化"
+
+    return "主要敗因：" + "、".join(reasons)
 
 
 def fetch_weather():
@@ -253,7 +275,6 @@ def fetch_weather():
 def build_fire_results(data, sunset):
     start_window = sunset.replace(hour=15, minute=0)
     end_window = sunset + timedelta(minutes=30)
-
     results = []
 
     for i, t in enumerate(data["hourly"]["time"]):
@@ -298,7 +319,6 @@ def build_fire_results(data, sunset):
 def build_star_results(data, sunset, next_sunrise, moon_phase):
     start_window = sunset + timedelta(hours=1)
     end_window = next_sunrise - timedelta(hours=1)
-
     results = []
 
     for i, t in enumerate(data["hourly"]["time"]):
@@ -347,7 +367,7 @@ def print_fire_report(now, sunset, fire_results, start_window, end_window):
 
     conf, stars = confidence(now, best["time"])
 
-    print("====== 火鳳雷達 v0.7.1 ======")
+    print("====== 火鳳雷達 v0.7.2 ======")
     print("地點：鳳林山觀景點")
     print(f"目前時間：{now.strftime('%H:%M')}")
     print(f"日落時間：{sunset.strftime('%H:%M')}")
@@ -409,7 +429,7 @@ def print_star_report(now, star_results, start_window, end_window, moon_phase):
     conf, stars = confidence(now, best["time"])
 
     print()
-    print("====== 星空雷達 v0.7.1 ======")
+    print("====== 星空雷達 v0.7.2 ======")
     print("地點：鳳林山觀景點")
     print(f"星空觀察窗：{start_window.strftime('%H:%M')} – {end_window.strftime('%H:%M')}")
     print()
@@ -417,6 +437,7 @@ def print_star_report(now, star_results, start_window, end_window, moon_phase):
     print(f"即時星空指數：{current_text}")
     print(f"可信度：{conf}% {stars}")
     print(f"月相指數：{moon_phase:.2f}，{moon_label(moon_phase)}")
+    print(star_failure_reason(best))
     print()
     print(f"最佳預測時間：{best['time'].strftime('%H:%M')}")
     print(star_label(best["score"]))
