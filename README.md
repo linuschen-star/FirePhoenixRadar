@@ -1,10 +1,10 @@
 <!-- FIRE_REPORT_START -->
 ## 今日火鳳雷達
 
-更新時間：2026-06-24 11:26 台灣時間
+更新時間：2026-06-24 11:34 台灣時間
 
 ```text
-
+火鳳雷達執行失敗：report.txt 是空的，請查看 GitHub Actions 的 Run Fire Phoenix 步驟。
 ```
 <!-- FIRE_REPORT_END -->
 
