@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 report = Path("report.txt").read_text(encoding="utf-8")
 
@@ -9,10 +10,12 @@ readme = readme_path.read_text(encoding="utf-8")
 start = "<!-- FIRE_REPORT_START -->"
 end = "<!-- FIRE_REPORT_END -->"
 
+now = datetime.now(ZoneInfo("Asia/Taipei"))
+
 block = f"""<!-- FIRE_REPORT_START -->
 ## 今日火鳳雷達
 
-更新時間：{datetime.now().strftime("%Y-%m-%d %H:%M")}
+更新時間：{now.strftime("%Y-%m-%d %H:%M")} 台灣時間
 
 ```text
 {report.strip()}
