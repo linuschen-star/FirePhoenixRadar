@@ -4,6 +4,7 @@
 
 import requests
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 LAT = 23.783761
 LON = 121.437198
@@ -130,7 +131,7 @@ def main():
     }
 
     data = requests.get(url, params=params, timeout=15).json()
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Asia/Taipei")).replace(tzinfo=None)
 
     sunset_time = parse_time(data["daily"]["sunset"][0])
     start_window = sunset_time.replace(hour=15, minute=0)
