@@ -47,14 +47,17 @@ def moon_label(phase):
     return "殘月，後半夜較適合星空"
 
 
-def fire_label(score, rain, low, visibility):
+def fire_label(score, rain, low, visibility, sunlight):
+    if sunlight <= 15:
+        return "🌧 雨幕遮光，火鳳機率低"
+
     if score >= 75:
-        if rain >= 70 or low >= 70 or visibility < 8:
+        if rain >= 70 or low >= 70 or visibility < 8 or sunlight < 40:
             return "🔥🔥 大火鳳潛勢，但現場變數高"
         return "🔥🔥 大火鳳警報"
 
     if score >= 60:
-        if rain >= 65 or low >= 65 or visibility < 8:
+        if rain >= 65 or low >= 65 or visibility < 8 or sunlight < 35:
             return "🌦 有破口機會，但雨雲風險高"
         return "🔥 有機會"
 
@@ -82,76 +85,229 @@ def fire_mode_name(hour):
     return "夕照火鳳"
 
 
-def score_fire_phoenix(high, mid, low, visibility, wind, gust, rain, hour):
+def sunlight_penetration_score(shortwave, direct, rain, low, mid, visibility):
+    """
+    火鳳最關鍵不是只有雲材，而是夕陽有沒有打進來。
+
+    shortwave_radiation:
+        地表短波輻射，代表整體日照還剩多少。
+    direct_radiation:
+        直射輻射，代表太陽是否仍直接穿透雲層。
+
+    傍晚如果 direct_radiation 接近 0，加上降雨機率高，
+    就算高雲漂亮，也通常只是灰雲，不會燒。
+    """
+
     score = 0
+
+    if shortwave >= 300:
+        score += 35
+    elif shortwave >= 180:
+        score += 28
+    elif shortwave >= 100:
+        score += 20
+    elif shortwave >= 40:
+        score += 10
+    elif shortwave >= 10:
+        score += 4
+    else:
+        score -= 20
+
+    if direct >= 180:
+        score += 40
+    elif direct >= 90:
+        score += 30
+    elif direct >= 30:
+        score += 15
+    elif direct >= 5:
+        score += 5
+    else:
+        score -= 35
+
+    if rain >= 90:
+        score -= 35
+    elif rain >= 75:
+        score -= 25
+    elif rain >= 60:
+        score -= 12
+    elif rain <= 30:
+        score += 5
+
+    if low >= 80:
+        score -= 30
+    elif low >= 60:
+        score -= 18
+    elif low >= 40:
+        score -= 8
+    elif low <= 25:
+        score += 10
+
+    if mid >= 90:
+        score -= 12
+    elif mid >= 75:
+        score -= 6
+
+    if visibility >= 15:
+        score += 10
+    elif visibility >= 8:
+        score += 4
+    elif visibility < 5:
+        score -= 18
+
+    # 關鍵防呆：正在下雨 + 沒直射光，直接視為無夕陽穿透。
+    if rain >= 85 and direct < 10:
+        score = min(score, 12)
+
+    if rain >= 85 and shortwave < 30:
+        score = min(score, 10)
+
+    if visibility < 5 and direct < 10:
+        score = min(score, 15)
+
+    return clamp(score)
+
+
+def fire_failure_reason(best):
+    reasons = []
+
+    if best["sunlight"] <= 15:
+        reasons.append("夕陽光照不足")
+    elif best["sunlight"] <= 35:
+        reasons.append("夕陽穿透偏弱")
+
+    if best["direct_radiation"] < 10:
+        reasons.append("直射光幾乎消失")
+
+    if best["shortwave_radiation"] < 30:
+        reasons.append("地表短波輻射過低")
+
+    if best["rain"] >= 85:
+        reasons.append("降雨機率極高")
+    elif best["rain"] >= 65:
+        reasons.append("降雨機率偏高")
+
+    if best["visibility"] < 5:
+        reasons.append("能見度差")
+    elif best["visibility"] < 8:
+        reasons.append("能見度偏差")
+
+    if best["low"] >= 70:
+        reasons.append("低層雲阻擋地平線")
+    elif best["low"] >= 45:
+        reasons.append("低層雲偏多")
+
+    if best["high"] < 20 and best["mid"] < 20:
+        reasons.append("缺少可被夕陽點燃的雲材")
+
+    if not reasons:
+        return "主要限制：雲層與夕陽角度變化"
+
+    return "主要敗因：" + "、".join(reasons)
+
+
+def score_fire_phoenix(high, mid, low, visibility, wind, gust, rain, hour, shortwave, direct):
+    cloud_score = 0
     cloud_material = high + mid
 
     if 30 <= high <= 80:
-        score += 35
+        cloud_score += 35
     elif 15 <= high <= 90:
-        score += 20
+        cloud_score += 20
     elif high > 90:
-        score += 10
+        cloud_score += 10
 
     if 20 <= mid <= 60:
-        score += 25
+        cloud_score += 25
     elif 10 <= mid <= 80:
-        score += 15
+        cloud_score += 15
+    elif mid > 80:
+        cloud_score += 8
 
     if low <= 20:
-        score += 20
+        cloud_score += 20
     elif low <= 40:
-        score += 10
+        cloud_score += 10
     elif low <= 60:
-        score += 5
+        cloud_score += 5
     elif low <= 75:
-        score -= 10
+        cloud_score -= 10
     else:
-        score -= 25
+        cloud_score -= 25
 
     if visibility >= 20:
-        score += 10
+        cloud_score += 10
     elif visibility >= 10:
-        score += 5
+        cloud_score += 5
     elif visibility < 5:
-        score -= 15
+        cloud_score -= 15
     elif visibility < 8:
-        score -= 8
+        cloud_score -= 8
 
     if gust >= 30 and cloud_material >= 35:
-        score += 10
+        cloud_score += 10
     elif gust >= 22 and cloud_material >= 35:
-        score += 5
+        cloud_score += 5
 
+    # 小雨或遠方陣雨可能製造破口與反射，但高雨率會壓低。
     if 20 <= rain <= 55 and cloud_material >= 35:
-        score += 10
+        cloud_score += 8
     elif 56 <= rain <= 70 and cloud_material >= 35:
-        score += 5
+        cloud_score += 2
+    elif rain > 85:
+        cloud_score -= 15
     elif rain > 75:
-        score -= 12
+        cloud_score -= 10
 
     if cloud_material >= 25:
         if hour < 17:
-            score += 5
+            cloud_score += 5
         else:
-            score += 10
+            cloud_score += 10
 
     if cloud_material < 15:
-        score = min(score, 30)
+        cloud_score = min(cloud_score, 30)
     elif cloud_material < 25:
-        score = min(score, 45)
+        cloud_score = min(cloud_score, 45)
 
     if low >= 80 and rain >= 70:
-        score = min(score, 35)
+        cloud_score = min(cloud_score, 30)
     elif low >= 70 and rain >= 70:
-        score = min(score, 48)
+        cloud_score = min(cloud_score, 42)
     elif low >= 65 and rain >= 75:
-        score = min(score, 50)
+        cloud_score = min(cloud_score, 45)
 
     if visibility < 5:
-        score = min(score, 45)
+        cloud_score = min(cloud_score, 40)
 
-    return clamp(score)
+    cloud_score = clamp(cloud_score)
+
+    sunlight = sunlight_penetration_score(
+        shortwave=shortwave,
+        direct=direct,
+        rain=rain,
+        low=low,
+        mid=mid,
+        visibility=visibility
+    )
+
+    # v0.7.3 核心：火鳳 = 雲材 * 夕陽穿透
+    # 有雲材但無陽光，分數必須被壓低。
+    final_score = round((cloud_score * 0.65) + (sunlight * 0.35))
+
+    if sunlight <= 10:
+        final_score = min(final_score, 20)
+    elif sunlight <= 20:
+        final_score = min(final_score, 32)
+    elif sunlight <= 35 and rain >= 75:
+        final_score = min(final_score, 45)
+
+    if direct < 5 and rain >= 80:
+        final_score = min(final_score, 18)
+
+    if shortwave < 20 and rain >= 80:
+        final_score = min(final_score, 16)
+
+    return clamp(final_score), cloud_score, sunlight
 
 
 def score_star_sky(high, mid, low, visibility, rain, moon_phase):
@@ -263,7 +419,9 @@ def fetch_weather():
             "visibility",
             "wind_speed_10m",
             "wind_gusts_10m",
-            "precipitation_probability"
+            "precipitation_probability",
+            "shortwave_radiation",
+            "direct_radiation"
         ])
     }
 
@@ -288,8 +446,10 @@ def build_fire_results(data, sunset):
             wind = data["hourly"]["wind_speed_10m"][i]
             gust = data["hourly"]["wind_gusts_10m"][i]
             rain = data["hourly"]["precipitation_probability"][i]
+            shortwave = data["hourly"]["shortwave_radiation"][i]
+            direct = data["hourly"]["direct_radiation"][i]
 
-            score = score_fire_phoenix(
+            score, cloud_score, sunlight = score_fire_phoenix(
                 high=high,
                 mid=mid,
                 low=low,
@@ -297,12 +457,16 @@ def build_fire_results(data, sunset):
                 wind=wind,
                 gust=gust,
                 rain=rain,
-                hour=dt.hour
+                hour=dt.hour,
+                shortwave=shortwave,
+                direct=direct
             )
 
             results.append({
                 "time": dt,
                 "score": score,
+                "cloud_score": cloud_score,
+                "sunlight": sunlight,
                 "mode": fire_mode_name(dt.hour),
                 "high": high,
                 "mid": mid,
@@ -310,7 +474,9 @@ def build_fire_results(data, sunset):
                 "visibility": visibility,
                 "wind": wind,
                 "gust": gust,
-                "rain": rain
+                "rain": rain,
+                "shortwave_radiation": shortwave,
+                "direct_radiation": direct
             })
 
     return results, start_window, end_window
@@ -367,13 +533,15 @@ def print_fire_report(now, sunset, fire_results, start_window, end_window):
 
     conf, stars = confidence(now, best["time"])
 
-    print("====== 火鳳雷達 v0.7.2 ======")
+    print("====== 火鳳雷達 v0.7.3 ======")
     print("地點：鳳林山觀景點")
     print(f"目前時間：{now.strftime('%H:%M')}")
     print(f"日落時間：{sunset.strftime('%H:%M')}")
     print(f"火鳳觀察窗：{start_window.strftime('%H:%M')} – {end_window.strftime('%H:%M')}")
     print()
     print(f"今日火鳳潛勢：{best['score']}%")
+    print(f"雲材分數：{best['cloud_score']}%")
+    print(f"光照穿透：{best['sunlight']}%")
     print(f"即時火鳳指數：{current_text}")
     print(f"可信度：{conf}% {stars}")
     print()
@@ -384,9 +552,11 @@ def print_fire_report(now, sunset, fire_results, start_window, end_window):
             score=best["score"],
             rain=best["rain"],
             low=best["low"],
-            visibility=best["visibility"]
+            visibility=best["visibility"],
+            sunlight=best["sunlight"]
         )
     )
+    print(fire_failure_reason(best))
     print()
     print("最佳火鳳時段判斷資料：")
     print(f"高空雲：{best['high']}%")
@@ -396,6 +566,8 @@ def print_fire_report(now, sunset, fire_results, start_window, end_window):
     print(f"風速：{best['wind']} km/h")
     print(f"陣風：{best['gust']} km/h")
     print(f"降雨機率：{best['rain']}%")
+    print(f"短波輻射：{best['shortwave_radiation']} W/m²")
+    print(f"直射輻射：{best['direct_radiation']} W/m²")
     print()
     print("火鳳逐時預測：")
 
@@ -403,6 +575,8 @@ def print_fire_report(now, sunset, fire_results, start_window, end_window):
         print(
             f"{r['time'].strftime('%H:%M')} | "
             f"{r['score']:3}% | "
+            f"雲材 {r['cloud_score']:3}% | "
+            f"光照 {r['sunlight']:3}% | "
             f"{r['mode']} | "
             f"高 {r['high']:3}% "
             f"中 {r['mid']:3}% "
@@ -410,7 +584,9 @@ def print_fire_report(now, sunset, fire_results, start_window, end_window):
             f"風 {r['wind']:4.1f} "
             f"陣 {r['gust']:4.1f} | "
             f"雨 {r['rain']:3}% | "
-            f"能見度 {r['visibility']:.1f}km"
+            f"能見度 {r['visibility']:.1f}km | "
+            f"短波 {r['shortwave_radiation']:5.1f} | "
+            f"直射 {r['direct_radiation']:5.1f}"
         )
 
 
@@ -429,7 +605,7 @@ def print_star_report(now, star_results, start_window, end_window, moon_phase):
     conf, stars = confidence(now, best["time"])
 
     print()
-    print("====== 星空雷達 v0.7.2 ======")
+    print("====== 星空雷達 v0.7.3 ======")
     print("地點：鳳林山觀景點")
     print(f"星空觀察窗：{start_window.strftime('%H:%M')} – {end_window.strftime('%H:%M')}")
     print()
