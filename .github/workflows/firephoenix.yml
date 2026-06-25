@@ -4,6 +4,8 @@ name: Fire Phoenix Radar
   workflow_dispatch:
 
   schedule:
+    - cron: '0 5 * * *'
+    - cron: '0 6 * * *'
     - cron: '0 7 * * *'
     - cron: '0 8 * * *'
     - cron: '0 9 * * *'
